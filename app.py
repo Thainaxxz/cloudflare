@@ -14,6 +14,7 @@ from services import CloudflareService
 from database import get_db, init_db, AuditLog, User
 from auth import (
     verify_password,
+    hash_password,
     create_access_token,
     get_current_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -30,8 +31,36 @@ templates = Jinja2Templates(directory="templates")
 
 @app.on_event("startup")
 async def startup():
-    """Cria as tabelas no banco se ainda não existirem."""
+    """Cria as tabelas e o usuário admin inicial se não existir."""
     init_db()
+
+    # Lê credenciais do admin das variáveis de ambiente
+    admin_email    = os.getenv("ADMIN_EMAIL")
+    admin_password = os.getenv("ADMIN_PASSWORD")
+    admin_name     = os.getenv("ADMIN_NAME", "Administrador")
+
+    if not admin_email or not admin_password:
+        print("⚠️  ADMIN_EMAIL ou ADMIN_PASSWORD não definidos — admin não será criado automaticamente.")
+        return
+
+    db = next(get_db())
+    try:
+        existing = db.query(User).filter(User.email == admin_email).first()
+        if not existing:
+            admin = User(
+                email=admin_email,
+                name=admin_name,
+                hashed_password=hash_password(admin_password),
+                is_active=True,
+                is_admin=True,
+            )
+            db.add(admin)
+            db.commit()
+            print(f"✅ Admin '{admin_email}' criado automaticamente.")
+        else:
+            print(f"ℹ️  Admin '{admin_email}' já existe, nada a fazer.")
+    finally:
+        db.close()
 
 
 # ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -96,6 +125,7 @@ async def index(
 
 @app.post("/login")
 async def do_login(
+    request: Request,
     email: str = Form(...),
     password: str = Form(...),
     db: Session = Depends(get_db),
@@ -104,17 +134,16 @@ async def do_login(
     user = db.query(User).filter(User.email == email).first()
 
     if not user or not verify_password(password, user.hashed_password):
-        # Retorna para /login com mensagem de erro
         return templates.TemplateResponse(
             "login.html",
-            {"request": {}, "error": "E-mail ou senha inválidos."},
+            {"request": request, "error": "E-mail ou senha inválidos."},
             status_code=401,
         )
 
     if not user.is_active:
         return templates.TemplateResponse(
             "login.html",
-            {"request": {}, "error": "Usuário desativado. Contate o administrador."},
+            {"request": request, "error": "Usuário desativado. Contate o administrador."},
             status_code=403,
         )
 
@@ -127,7 +156,7 @@ async def do_login(
     response.set_cookie(
         key="access_token",
         value=token,
-        httponly=True,      # JavaScript não consegue ler — mais seguro
+        httponly=True,
         samesite="lax",
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
