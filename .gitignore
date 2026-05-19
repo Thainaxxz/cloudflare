@@ -1,0 +1,21 @@
+# ─── Banco de Dados Local da Oficina ───
+# Bloqueia o arquivo SQLite para não vazar os dados dos clientes na nuvem
+dns_manager.db
+*.db
+*.db-journal
+
+# ─── Configurações e Segredos ───
+# Bloqueia as chaves JWT e tokens da Cloudflare
+.env
+
+# ─── Caches do Python ───
+# Arquivos temporários de compilação do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ─── Configurações do Editor de Código (Opcional) ───
+# Se usar VS Code, evita subir as configurações locais da sua máquina
+.vscode/
+.idea/
